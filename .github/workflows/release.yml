@@ -1,0 +1,64 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - poe_core_manager.py
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    - name: Install dependencies
+      run: pip install pyinstaller psutil
+
+    - name: Build executable
+      run: pyinstaller --onefile poe_core_manager.py
+
+    - name: Generate a version tag
+      id: tag
+      shell: pwsh
+      run: |
+        $version = "v" + (Get-Date).ToString('yyyy.MM.dd.HHmm')
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+
+    - name: Push version tag
+      run: |
+        git config --local user.name "GitHub Actions"
+        git config --local user.email "actions@github.com"
+        git tag ${{ steps.tag.outputs.version }}
+        git push origin ${{ steps.tag.outputs.version }}
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.version }}
+        release_name: Release ${{ steps.tag.outputs.version }}
+        body: |
+          This is an automated release triggered by a change to poe_core_manager.py.
+        draft: false
+        prerelease: false
+
+    - name: Upload executable to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: dist/poe_core_manager.exe
+        asset_name: poe_core_manager.exe
+        asset_content_type: application/octet-stream
